@@ -9,7 +9,7 @@ class SeqLstmModel():
         self.batch_size= 1
         self.lstm_nodes = 50
         self.feature_nums = 4
-        self.data_type = tf.float16
+        self.data_type = tf.float32
         self.output_keep_prob = 0.8
         self.lstm_layers = 2
         self.output_nodes = 2
@@ -52,12 +52,12 @@ class SeqLstmModel():
         x = tf.placeholder(self.data_type,shape=[self.batch_size,self.num_steps,self.feature_nums])
         y = tf.placeholder(self.data_type,shape=[self.batch_size,self.feature_nums-2])
 
-        lstm_cell = tf.contrib.rnn.BasicLSTMCell(self.lstm_nodes)
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.lstm_nodes)
         if self.output_keep_prob>0 and self.output_keep_prob<1:
-            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell,output_keep_prob = self.output_keep_prob)
+            lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell,output_keep_prob = self.output_keep_prob)
         if not isinstance(self.lstm_layers,int):
             self.lstm_layers =2
-        cell = tf.contrib.rnn.MultiRNNCell([lstm_cell]*self.lstm_layers,state_is_tuple = True)
+        cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell]*self.lstm_layers,state_is_tuple = True)
         state = cell.zero_state(self.batch_size,self.data_type)
 
         outputs = []
@@ -70,15 +70,16 @@ class SeqLstmModel():
 
         final_output = outputs[-1]
 
-        full_connect_w = tf.get_variable("full_connect_w",shape=[self.lstm_nodes,self.output_nodes],dtype=self.data_type)
-        full_connect_b = tf.get_variable("full_connect_b",shape=[self.output_nodes],dtype=self.data_type)
+        full_connect_w = tf.Variable(tf.random_normal([self.lstm_nodes,self.output_nodes],stddev= 0.1),dtype=self.data_type,name="full_connected_w")
+        full_connect_b = tf.Variable(tf.random_normal([self.output_nodes],stddev= 0.05),dtype=self.data_type,name="full_connected_b")
 
         predict = tf.matmul(final_output,full_connect_w)+full_connect_b
-
-        cost = tf.squared_difference(predict,y,"loss")
+        # predict_ = tf.Variable(predict,name="predict")
+        cost = tf.reduce_sum(tf.contrib.losses.mean_squared_error(predict,y))
         optimizer = tf.train.GradientDescentOptimizer(self.lr)
         train_op = optimizer.minimize(cost)
-        return train_op,cost,x,y
+        # return train_op,cost,x,y,predict_
+        return train_op,cost,x,y,predict
 
     ### input : shape = [batch_size, num_steps, feature_nums]
     ### output:
@@ -96,8 +97,8 @@ class SeqLstmModel():
         return x,y
 
     def train(self):
-        train_op,cost,x,y  = self.init_lstm()
-        init= tf.initialize_all_variables()
+        train_op,cost,x,y,predict_ = self.init_lstm()
+        init= tf.global_variables_initializer()
         data= self.read_data()
         with tf.device(self.device),tf.Session() as session:
             session.run(init)
@@ -108,11 +109,14 @@ class SeqLstmModel():
                 while train_step< train_num_per_round:
                     x_,y_ = self.get_next_tarin_data(data,train_step)
                     session.run(train_op,feed_dict = {x: x_,y: y_})
-
+                    # print(x_,y_)
                     if train_step%self.display_per_nums == 0:
                         loss = session.run(cost,feed_dict={x:x_,y:y_})
                         print("repeat num"+str(repeat_num)+" train_times: "+str(int(train_step/self.display_per_nums))
-                        +" loss = "+str(loss*11))
+                        +" loss = "+str(loss*22))
+                    pred = session.run(predict_,feed_dict={x:x_,y:y_})
+                    # print(pred,y_)
+                    # print()
                     train_step+=1
                 repeat_num+=1
 
