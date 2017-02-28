@@ -1,0 +1,2 @@
+model_checkpoint_path: "/home/czb/PycharmProjects/TyphoonSeq/data/model/model.ckpt"
+all_model_checkpoint_paths: "/home/czb/PycharmProjects/TyphoonSeq/data/model/model.ckpt"

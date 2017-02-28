@@ -1,13 +1,15 @@
 __author__ = 'E440'
 import Dir
 import tensorflow as tf
+import math
 
 class SeqLstmModel():
 
     def __init__(self):
         self.num_steps =4
-        self.batch_size= 1
-        self.lstm_nodes = 50
+        ### first = 128
+        self.batch_size=128
+        self.lstm_nodes = 100
         self.feature_nums = 4
         self.data_type = tf.float32
         self.output_keep_prob = 0.8
@@ -45,6 +47,14 @@ class SeqLstmModel():
                         data.append(tmp_data[key][i:i+self.num_steps+1])
         return data
 
+    def seperate_data(self,data,train_rate = 0.8):
+        trainsize = int(data.__len__()* train_rate)
+        trainData = data[:trainsize]
+        testData = data[trainsize:]
+        return trainData,testData
+
+
+
     ### definal a multi layer lstm model
     ### inputs: shape = [batch_size, num_steps, feature_nums]
     ### output: shpae = [batch_size*num_steps, lstm_nodes]
@@ -81,6 +91,32 @@ class SeqLstmModel():
         # return train_op,cost,x,y,predict_
         return train_op,cost,x,y,predict
 
+
+
+    ### definal a multi layer lstm model
+    ### inputs: shape = [batch_size, num_steps, feature_nums]
+    ### output: shpae = [batch_size*num_steps, lstm_nodes]
+    # def init_lstm(self):
+    #     x = tf.placeholder(self.data_type,shape=[self.batch_size,self.num_steps,self.feature_nums])
+    #     y = tf.placeholder(self.data_type,shape=[self.batch_size,self.feature_nums-2])
+    #
+    #     lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.lstm_nodes)
+    #     output,state = tf.nn.rnn(lstm_cell,x,self.data_type)
+    #
+    #     final_output = output[-1]
+    #
+    #     full_connect_w = tf.Variable(tf.random_normal([self.lstm_nodes,self.output_nodes],stddev= 0.1),dtype=self.data_type,name="full_connected_w")
+    #     full_connect_b = tf.Variable(tf.random_normal([self.output_nodes],stddev= 0.05),dtype=self.data_type,name="full_connected_b")
+    #
+    #     predict = tf.matmul(final_output,full_connect_w)+full_connect_b
+    #     # predict_ = tf.Variable(predict,name="predict")
+    #     cost = tf.reduce_sum(tf.contrib.losses.mean_squared_error(predict,y))
+    #     optimizer = tf.train.GradientDescentOptimizer(self.lr)
+    #     train_op = optimizer.minimize(cost)
+    #     # return train_op,cost,x,y,predict_
+    #     return train_op,cost,x,y,predict
+
+
     ### input : shape = [batch_size, num_steps, feature_nums]
     ### output:
     def get_next_tarin_data(self,data,train_step):
@@ -96,39 +132,88 @@ class SeqLstmModel():
             y.append(tmp_y)
         return x,y
 
-    def train(self):
+    def cal(self,predict,y):
+        result = []
+        for i in range(predict.__len__()):
+            pre = predict[i]
+            y_ = y[i]
+            dist = math.sqrt(math.pow(float(pre[0])-float(y_[0]),2) + math.pow(float(pre[1])-float(y_[1]),2))
+            result.append(dist)
+        return 11*sum(result)/result.__len__()
+
+    def save(self,session,name,repeat_num ):
+        filepath = Dir.resourceDir + "model/model_batch_szie_"+str(self.batch_size)+"_mid_node_"+self.lstm_nodes+"_repeat_num_"+str(repeat_num)+"_loss_"+name+".ckpt"
+        saver = tf.train.Saver()
+        saver.save(session, filepath)
+
+    def load(self,filepath):
+        train_op, cost, x, y, predict_ = self.init_lstm()
+        saver = tf.train.Saver()
+        session = tf.Session()
+        saver.restore(session, filepath)
+        return train_op,cost,x,y,predict_,session
+
+    def train(self,trainData,testData):
         train_op,cost,x,y,predict_ = self.init_lstm()
         init= tf.global_variables_initializer()
-        data= self.read_data()
+        # trainData,testData = self.seperate_data(data)
+        train_loss =10000
+        test_loss = 5000
+        count =1
         with tf.device(self.device),tf.Session() as session:
             session.run(init)
             repeat_num =0
-            train_num_per_round = data.__len__()/self.batch_size
-            while repeat_num<self.repeate_train_times:
+            train_num_per_round = int(trainData.__len__()/self.batch_size)
+            test_num_per_round = int(testData.__len__()/self.batch_size)
+            print(train_num_per_round,test_num_per_round)
+            while test_loss>=150:
                 train_step =0
+                train_loss = [[],[]]
                 while train_step< train_num_per_round:
-                    x_,y_ = self.get_next_tarin_data(data,train_step)
+                    x_,y_ = self.get_next_tarin_data(trainData,train_step)
                     session.run(train_op,feed_dict = {x: x_,y: y_})
-                    # print(x_,y_)
-                    if train_step%self.display_per_nums == 0:
-                        loss = session.run(cost,feed_dict={x:x_,y:y_})
-                        print("repeat num"+str(repeat_num)+" train_times: "+str(int(train_step/self.display_per_nums))
-                        +" loss = "+str(loss*22))
-                    pred = session.run(predict_,feed_dict={x:x_,y:y_})
-                    # print(pred,y_)
-                    # print()
+                    pred = session.run(predict_, feed_dict={x: x_, y: y_})
+                    train_loss[0].extend(y_)
+                    train_loss[1].extend(pred)
                     train_step+=1
+                train_loss = self.cal(train_loss[0],train_loss[1])
+                print("train loss", train_loss)
                 repeat_num+=1
+                test_step = 0
+                test_loss=[[],[]]
+                while test_step< test_num_per_round:
+                    x_, y_ = self.get_next_tarin_data(testData, test_step)
+                    pred = session.run(predict_, feed_dict={x: x_, y: y_})
+                    test_loss[0].extend(y_)
+                    test_loss[1].extend(pred)
+                    test_step+=1
+                test_loss = self.cal(test_loss[0], test_loss[1])
+                print("test loss", test_loss)
+                repeat_num+=1
+            self.save(session,test_loss,repeat_num)
 
+
+
+    def test(self,data,filepath="/home/czb/PycharmProjects/TyphoonSeq/data/model/model.ckpt"):
+        train_op, cost, x, y, predict_,session = self.load(filepath)
+        test_step = 0
+        test_loss = [[], []]
+        # data = self.read_data()
+        # trainData, testData = self.seperate_data(data)
+        test_num_per_round = int(data.__len__() / self.batch_size)
+        while test_step < test_num_per_round:
+            x_, y_ = self.get_next_tarin_data(data, test_step)
+            pred = session.run(predict_, feed_dict={x: x_, y: y_})
+            test_loss[0].extend(y_)
+            test_loss[1].extend(pred)
+            test_step += 1
+        test_loss = self.cal(test_loss[0], test_loss[1])
+        print("test loss", test_loss)
 
 if __name__ == "__main__":
     model = SeqLstmModel()
-    data= model.read_data()
-
-    # x,y = model.get_next_tarin_data(data,0)
-    # print(x)
-    # print(y)
-    # for line in data:
-    #     print(line)
-    model.train()
-    print(data.__len__())
+    train_data= model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/train.txt")
+    test_data = model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/test.txt")
+    test_data = model.train(train_data,test_data)
+    # model.test(test_data)
+    # print(data.__len__())

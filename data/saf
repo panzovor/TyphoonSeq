@@ -1,0 +1,4 @@
+/home/czb/anaconda3/bin/python /home/czb/PycharmProjects/TyphoonSeq/src/TyphoonSeqLstm.py
+4548 873
+train loss 1153.3315410121345
+test loss 3441.3424096250146
