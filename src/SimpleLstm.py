@@ -87,7 +87,6 @@ class SimpleLstmSeq():
         print(test_predict[0],test_predict[0])
         print(test_data[1][0],test_data[2][0])
 
-
         return self.real_loss(test_predict,test_predict1,test_data[1],test_data[2])
 
 

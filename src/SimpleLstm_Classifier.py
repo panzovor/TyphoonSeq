@@ -11,11 +11,11 @@ class SimpleLstmSeqClass():
 
 
         ### 前后各一百个格子
-        self.window_num =50
+        self.window_num =20
         ### 每个格子大小为1经纬度，约110公里
         self.window_size=10
-        self.hidden_node = 500
-        self.batch_size = 100
+        self.hidden_node = 50
+        self.batch_size = 128
         self.output_node = 2
         self.dtype = tf.float32
         self.num_step = 4
@@ -26,9 +26,7 @@ class SimpleLstmSeqClass():
         self.decay = 0.9
         self.repeat_times = 1000
         self.device ="/cpu:0"
-        self.inter = 3
-
-
+        self.inter = 1
 
     def network_struct(self):
         ### preprocess the place holder data
@@ -53,10 +51,12 @@ class SimpleLstmSeqClass():
         predict = tf.sigmoid(predict)
         ### cost
         cost = tf.contrib.losses.mean_squared_error(predict,self.y)
+        # cost = tf.nn.sigmoid_cross_entropy_with_logits(predict,self.y)
+
 
         ### optimizer
         optimizer = tf.train.RMSPropOptimizer(self.lr,decay=self.decay).minimize(cost)
-        return predict,outputs,cost,optimizer
+        return predict,outputs,cost,optimizer,states
 
     def map2index(self,previous_position,after_position):
         window_index = int(self.window_num+int((after_position[0]- previous_position[0]))/self.window_size)
@@ -69,6 +69,40 @@ class SimpleLstmSeqClass():
         result[location_index] =1.0
 
         return result
+
+    def read_data(self,filepath = Dir.resourceDir+"typhoon_route_list_wind_fix.txt"):
+        data = []
+        tmp_data = {}
+        with open(filepath,mode="r",encoding="utf-8") as file:
+            for line in file.readlines():
+                line = line.strip()
+                tmp = line.split(",")
+                if tmp.__len__() == 7:
+                    key_ = tmp[0]
+                    if key_ not in tmp_data.keys():
+                        tmp_data[key_] = []
+                    tmp_data[key_].append([float(var) for var in tmp[:]])
+            for key in tmp_data.keys():
+                # if tmp_data[key].__len__()<self.num_step:
+                if tmp_data[key].__len__()<self.num_step+self.inter+1:
+                    continue
+                else:
+                    for i in range(tmp_data[key].__len__() - self.num_step-self.inter):
+                        real_data = tmp_data[key][i:i+self.num_step]
+                        real_data.append(tmp_data[key][i+self.num_step+self.inter])
+                        # print(i,i+self.num_step,i+self.num_step+self.inter)
+                        data.append(real_data)
+        return data
+
+    def preprocess_each_data(self,each_data):
+        result =[]
+        if isinstance(each_data[0],list):
+            for each in each_data:
+                result.append(each[-4:])
+        else:
+            result = each_data[-4:]
+        return result
+
 
     ### data shape = [data num, num step, feature num]
     ### output =  x, y
@@ -84,14 +118,16 @@ class SimpleLstmSeqClass():
         batch_data= data[start_index:end_index]
         result = [[],[],[],[]]
         for each_data in batch_data:
-            result[0].extend(each_data[:-1])
-            previous_position = each_data[-2]
-            after_position = each_data[-1]
+            result[0].extend(self.preprocess_each_data(each_data[:-1]))
+            previous_position = self.preprocess_each_data(each_data[-2])
+            after_position = self.preprocess_each_data(each_data[-1])
             location_index = self.map2index(previous_position,after_position)
             result[2].append(after_position[0:2])
             result[3].append(previous_position[0:2])
             result[1].append(location_index)
         return result
+
+    # def get_all_data(self,data):
 
     def calculate_killo(self,predict_index,previous_position,real_position):
         x_predict = int(predict_index/(self.window_num*2))
@@ -123,15 +159,14 @@ class SimpleLstmSeqClass():
 
     def test(self,testdata,session,predict):
         test_data= self.next_batch(testdata)
-        real_label = test_data[1].copy()
         test_predict = session.run(predict,feed_dict={self.x:test_data[0]})
-        return self.real_loss(test_predict,real_label)
+        return self.real_loss(test_predict,test_data[3],test_data[2])
 
     def train(self,data,testdata=None):
-        predict,hidden_output,cost,optimizer = self.network_struct()
+        predict,hidden_output,cost,optimizer,states = self.network_struct()
         init = tf.global_variables_initializer()
         if self.batch_size == -1: self.batch_size = data.__len__()
-
+        min_loss = 109.6521987921885
         with tf.device(self.device),tf.Session() as session:
             session.run(init)
             repeat_num =0
@@ -146,39 +181,31 @@ class SimpleLstmSeqClass():
                     real_loss = self.real_loss(batch_predict,batch_data[3],batch_data[2])
                     train_cost= session.run(cost,feed_dict={self.x:batch_data[0],self.y:batch_data[1]})
                 # print("repeat time", str(repeat_num),train_cost)
-                    print("repeat time", str(repeat_num),"batch id",i, "train cost",train_cost,"real_loss",real_loss)
+                    print("repeat time", str(repeat_num),"batch id",i, "train cost",train_cost,"batch len",step_num_per_round, "real_loss",real_loss)
 
 
                 repeat_num+=1
+                # data_train_all  = self.next_batch(data,0,batch_size=-1)
+                # batch_predict = session.run(predict, feed_dict={self.x: data_train_all[0], self.y: data_train_all[1]})
+                # real_loss = self.real_loss(batch_predict, data_train_all[3], data_train_all[2])
+                # print("repeat time", str(repeat_num), "real_loss", real_loss)
                 if testdata != None:
                     test_loss = self.test(testdata,session,predict)
                     print("real test loss", test_loss)
 
+                    if test_loss < min_loss:
+                        print("saveing hidden value")
+                        data_train_all1 = self.next_batch(data, 0, batch_size=-1)
+                        hidden_train = session.run(hidden_output,feed_dict={self.x:data_train_all1[0],self.y:data_train_all1[1]})
+                        self.save(data,hidden_train,path = Dir.resourceDir+"hidden/train.txt")
+
+                        data_test_all1 = self.next_batch(testdata, 0, batch_size=-1)
+                        hidden_test = session.run(hidden_output, feed_dict={self.x: data_test_all1[0], self.y: data_test_all1[1]})
+                        self.save(testdata,hidden_test, path=Dir.resourceDir + "hidden/test.txt")
+                        min_loss = test_loss
+
             return batch_predict,batch_data[1]
 
-    def read_data(self,filepath = Dir.resourceDir+"typhoon_route_list_wind_fix.txt"):
-        data = []
-        tmp_data = {}
-        with open(filepath,mode="r",encoding="utf-8") as file:
-            for line in file.readlines():
-                line = line.strip()
-                tmp = line.split(",")
-                if tmp.__len__() == 7:
-                    key_ = tmp[0]
-                    if key_ not in tmp_data.keys():
-                        tmp_data[key_] = []
-                    tmp_data[key_].append([float(var) for var in tmp[-4:]])
-            for key in tmp_data.keys():
-                # if tmp_data[key].__len__()<self.num_step:
-                if tmp_data[key].__len__()<self.num_step+self.inter+1:
-                    continue
-                else:
-                    for i in range(tmp_data[key].__len__() - self.num_step-self.inter):
-                        real_data = tmp_data[key][i:i+self.num_step]
-                        real_data.append(tmp_data[key][i+self.num_step+self.inter])
-                        # print(i,i+self.num_step,i+self.num_step+self.inter)
-                        data.append(real_data)
-        return data
 
     def demo(self):
         train_path = Dir.resourceDir + "/smalldata/train.txt"
@@ -186,6 +213,27 @@ class SimpleLstmSeqClass():
         data = self.read_data(train_path)
         testdata = self.read_data(test_path)
         return self.train(data, testdata)
+
+    # def save(self,hidden_value):
+
+    def save(self,data,hidden,path):
+        line = ""
+        count =0
+        print(data.__len__(),hidden[0].__len__(),self.num_step+self.inter)
+        with open(path,mode="w",encoding="utf-8") as file:
+            for i in range(hidden[0].__len__()):
+                line += str(data[count][0])[1:-1]+","+str(list(hidden[0][i]))[1:-1]+"\n"
+                count+=1
+                # tmp.append( str(list(hidden[0][i])))
+            for i in range(self.num_step+self.inter):
+                line += str(data[-1][i])[1:-1]+","+str(list(hidden[-1][-1-i]))[1:-1]+"\n"
+                count+=1
+                # tmp.append(str(list(hidden[0][i])))
+            file.write(line)
+            file.flush()
+            print(count)
+
+
 
 if __name__ == "__main__":
     sls = SimpleLstmSeqClass()

@@ -5,6 +5,7 @@ import src.SimpleLstm_bak as sl_
 import src.SimpleLstm as sl
 import src.OtherLstm as ol
 import src.simple_network as slnk
+import src.SimpleLstm_Classifier as sc
 
 def print_picture(lines):
     for i in range(lines.__len__()):
@@ -26,5 +27,10 @@ slb = sl_.SimpleLstmSeq()
 ols = ol.SimpleLstmSeq()
 
 ols.lr = 1.0
-predict,y= slnk.SNW().demo()
+# predict,y= slnk.SNW().demo()
+sc_demo = sc.SimpleLstmSeqClass()
+sc_demo.repeat_times = 1
+sc_demo.hidden_node = 50
+# sc_demo.window_num = 10
+predict,y = sc_demo.demo()
 print_picture([predict,y])
