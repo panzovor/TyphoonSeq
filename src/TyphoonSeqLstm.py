@@ -8,7 +8,7 @@ class SeqLstmModel():
     def __init__(self):
         self.num_steps =4
         ### first = 128
-        self.batch_size=128
+        self.batch_size=-1
         self.lstm_nodes = 100
         self.feature_nums = 4
         self.data_type = tf.float32
@@ -19,6 +19,7 @@ class SeqLstmModel():
         self.device = "/cpu:0"
         self.repeate_train_times = 10
         self.display_per_nums = 100
+        self.inter = 3
 
     ### read data from single file
     ### input : filepath
@@ -38,13 +39,15 @@ class SeqLstmModel():
                     tmp_data[key_].append(tmp[-4:])
             for key in tmp_data.keys():
                 # print(tmp_data[key].__len__())
-                if tmp_data[key].__len__()<self.num_steps+1:
+                if tmp_data[key].__len__()<self.num_steps+self.inter+1:
                     # count+=1
                     # print(count)
                     continue
                 else:
-                    for i in range(tmp_data[key].__len__()-self.num_steps-1):
-                        data.append(tmp_data[key][i:i+self.num_steps+1])
+                    for i in range(tmp_data[key].__len__()-self.num_steps-self.inter):
+                        real_data = tmp_data[key][i:i+self.num_steps]
+                        real_data.append(tmp_data[key][i+self.num_steps+self.inter])
+                        data.append(real_data)
         return data
 
     def seperate_data(self,data,train_rate = 0.8):
@@ -154,9 +157,12 @@ class SeqLstmModel():
         return train_op,cost,x,y,predict_,session
 
     def train(self,trainData,testData):
+        if self.batch_size == -1:
+            self.batch_size = trainData.__len__()
         train_op,cost,x,y,predict_ = self.init_lstm()
         init= tf.global_variables_initializer()
         # trainData,testData = self.seperate_data(data)
+
         train_loss =10000
         test_loss = 5000
         count =1
@@ -165,8 +171,10 @@ class SeqLstmModel():
             repeat_num =0
             train_num_per_round = int(trainData.__len__()/self.batch_size)
             test_num_per_round = int(testData.__len__()/self.batch_size)
-            print(train_num_per_round,test_num_per_round)
-            while test_loss>=150:
+            # print(train_num_per_round,test_num_per_round)
+            predicts = None
+            y_ = None
+            while repeat_num <= 350:
                 train_step =0
                 train_loss = [[],[]]
                 while train_step< train_num_per_round:
@@ -177,8 +185,16 @@ class SeqLstmModel():
                     train_loss[1].extend(pred)
                     train_step+=1
                 train_loss = self.cal(train_loss[0],train_loss[1])
+
+                predicts = session.run(predict_,feed_dict = {x: x_,y: y_})
+                # print(y_[0])
+                #
+                # print(predicts[0])
+                # print(predicts[-1])
+                # print(y_[-1])
+                # input()
+
                 print("train loss", train_loss)
-                repeat_num+=1
                 test_step = 0
                 test_loss=[[],[]]
                 while test_step< test_num_per_round:
@@ -188,9 +204,10 @@ class SeqLstmModel():
                     test_loss[1].extend(pred)
                     test_step+=1
                 test_loss = self.cal(test_loss[0], test_loss[1])
-                print("test loss", test_loss)
+                print(str(repeat_num)+"test loss", test_loss)
                 repeat_num+=1
-            self.save(session,test_loss,repeat_num)
+            # self.save(session,test_loss,repeat_num)
+            return predicts,y_
 
 
 
@@ -210,10 +227,15 @@ class SeqLstmModel():
         test_loss = self.cal(test_loss[0], test_loss[1])
         print("test loss", test_loss)
 
+    def demo(self):
+        train_data = self.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/smalldata/train.txt")
+        test_data =  self.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/smalldata/test.txt")
+        return self.train(train_data, test_data)
+
 if __name__ == "__main__":
     model = SeqLstmModel()
-    train_data= model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/train.txt")
-    test_data = model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/test.txt")
+    train_data= model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/smalldata/train.txt")
+    test_data = model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/smalldata/test.txt")
     test_data = model.train(train_data,test_data)
     # model.test(test_data)
     # print(data.__len__())
