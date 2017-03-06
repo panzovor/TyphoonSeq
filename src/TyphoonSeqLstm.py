@@ -3,12 +3,13 @@ import Dir
 import tensorflow as tf
 import math
 
+
 class SeqLstmModel():
 
     def __init__(self):
         self.num_steps =4
         ### first = 128
-        self.batch_size=128
+        self.batch_size=1024
         self.lstm_nodes = 100
         self.feature_nums = 4
         self.data_type = tf.float32
@@ -62,7 +63,7 @@ class SeqLstmModel():
         x = tf.placeholder(self.data_type,shape=[self.batch_size,self.num_steps,self.feature_nums])
         y = tf.placeholder(self.data_type,shape=[self.batch_size,self.feature_nums-2])
 
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.lstm_nodes)
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.lstm_nodes,forget_bias=1.0)
         if self.output_keep_prob>0 and self.output_keep_prob<1:
             lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell,output_keep_prob = self.output_keep_prob)
         if not isinstance(self.lstm_layers,int):
@@ -156,10 +157,7 @@ class SeqLstmModel():
     def train(self,trainData,testData):
         train_op,cost,x,y,predict_ = self.init_lstm()
         init= tf.global_variables_initializer()
-        # trainData,testData = self.seperate_data(data)
-        train_loss =10000
         test_loss = 5000
-        count =1
         with tf.device(self.device),tf.Session() as session:
             session.run(init)
             repeat_num =0
@@ -169,12 +167,17 @@ class SeqLstmModel():
             while test_loss>=150:
                 train_step =0
                 train_loss = [[],[]]
+                tmp_loss = []
                 while train_step< train_num_per_round:
                     x_,y_ = self.get_next_tarin_data(trainData,train_step)
                     session.run(train_op,feed_dict = {x: x_,y: y_})
                     pred = session.run(predict_, feed_dict={x: x_, y: y_})
                     train_loss[0].extend(y_)
                     train_loss[1].extend(pred)
+                    loss = session.run(cost,feed_dict={x:x_,y:y_})
+                    tmp_loss.append(loss*44)
+                    if train_step%self.display_per_nums == 0:
+                        tmp_loss.clear()
                     train_step+=1
                 train_loss = self.cal(train_loss[0],train_loss[1])
                 print("train loss", train_loss)
@@ -212,8 +215,8 @@ class SeqLstmModel():
 
 if __name__ == "__main__":
     model = SeqLstmModel()
-    train_data= model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/train.txt")
-    test_data = model.read_data(filepath="/home/czb/PycharmProjects/TyphoonSeq/data/test.txt")
+    train_data= model.read_data(filepath=Dir.resourceDir+"train.txt")
+    test_data = model.read_data(filepath=Dir.resourceDir+"test.txt")
     test_data = model.train(train_data,test_data)
     # model.test(test_data)
     # print(data.__len__())
