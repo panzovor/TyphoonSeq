@@ -11,7 +11,7 @@ class SimpleLstmSeqClass():
 
 
         ### 前后各一百个格子
-        self.window_num =20
+        self.window_num =50
         ### 每个格子大小为1经纬度，约110公里
         self.window_size=10
         self.hidden_node = 50
@@ -26,7 +26,7 @@ class SimpleLstmSeqClass():
         self.decay = 0.9
         self.repeat_times = 1000
         self.device ="/cpu:0"
-        self.inter = 1
+        self.inter = 3
 
     def network_struct(self):
         ### preprocess the place holder data
